@@ -1,314 +1,189 @@
+cat > index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Linux Terminal Panel</title>
- 
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Linux Terminal Panel</title>
   <link rel="stylesheet" href="xterm.css" />
-<style>
-
+  <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
- 
     body {
-
       background: #0d1117;
-
       color: #c9d1d9;
-
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-
       height: 100vh;
-
       display: flex;
-
       flex-direction: column;
-
       overflow: hidden;
-
     }
- 
     .header {
-
       background: #161b22;
-
       border-bottom: 1px solid #30363d;
-
       padding: 10px 16px;
-
       display: flex;
-
       align-items: center;
-
       justify-content: space-between;
-
       flex-shrink: 0;
-
     }
- 
-    .header-left {
-
-      display: flex;
-
-      align-items: center;
-
-      gap: 10px;
-
-    }
- 
-    .dot {
-
-      width: 12px;
-
-      height: 12px;
-
-      border-radius: 50%;
-
-    }
-
-    .dot.red    { background: #ff5f56; }
-
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot.red { background: #ff5f56; }
     .dot.yellow { background: #ffbd2e; }
-
-    .dot.green  { background: #27c93f; }
- 
-    .title {
-
-      font-size: 14px;
-
-      font-weight: 500;
-
-      color: #8b949e;
-
-    }
- 
+    .dot.green { background: #27c93f; }
+    .title { font-size: 14px; font-weight: 500; color: #8b949e; }
     .controls button {
-
       background: #21262d;
-
       color: #c9d1d9;
-
       border: 1px solid #30363d;
-
       border-radius: 6px;
-
       padding: 5px 12px;
-
       font-size: 13px;
-
       cursor: pointer;
-
       margin-left: 8px;
-
     }
-
-    .controls button:hover {
-
-      background: #30363d;
-
-    }
- 
+    .controls button:hover { background: #30363d; }
     #panel {
-
       flex: 1;
-
       display: flex;
-
       flex-direction: column;
-
       padding: 12px;
-
       min-height: 0;
-
     }
- 
     #terminal-wrapper {
-
       flex: 1;
-
       background: #0d1117;
-
       border: 1px solid #30363d;
-
       border-radius: 8px;
-
       overflow: hidden;
-
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-
       position: relative;
-
     }
- 
-    #terminal {
-
-      width: 100%;
-
-      height: 100%;
-
-      padding: 4px;
-
-    }
- 
+    #terminal { width: 100%; height: 100%; padding: 4px; }
     #status {
-
       position: absolute;
-
       top: 8px;
-
       right: 12px;
-
       font-size: 12px;
-
       color: #8b949e;
-
       background: #161b22;
-
       padding: 2px 8px;
-
       border-radius: 4px;
-
       z-index: 10;
-
     }
-</style>
+  </style>
 </head>
 <body>
- 
   <div class="header">
-<div class="header-left">
-<div class="dot red"></div>
-<div class="dot yellow"></div>
-<div class="dot green"></div>
-<span class="title">Linux Terminal Panel (v86 + BusyBox)</span>
-</div>
-<div class="controls">
-<button id="btn-boot">Boot Linux</button>
-<button id="btn-reset">Reset</button>
-</div>
-</div>
- 
+    <div class="header-left">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+      <span class="title">Linux Terminal Panel (v86 + BusyBox)</span>
+    </div>
+    <div class="controls">
+      <button id="btn-boot">Boot Linux</button>
+      <button id="btn-reset">Reset</button>
+    </div>
+  </div>
+
   <div id="panel">
-<div id="terminal-wrapper">
-<div id="status">Ready</div>
-<div id="terminal"></div>
-</div>
-</div>
- 
+    <div id="terminal-wrapper">
+      <div id="status">Ready</div>
+      <div id="terminal"></div>
+    </div>
+  </div>
+
   <script src="libv86.js"></script>
-<script src="xterm.js"></script>
-<script src="xterm-addon-fit.js"></script>
- 
+  <script src="xterm.js"></script>
+  <script src="xterm-addon-fit.js"></script>
+
   <script>
-
     const term = new Terminal({
-
       cursorBlink: true,
-
       fontSize: 14,
-
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-
       theme: {
-
         background: '#0d1117',
-
         foreground: '#c9d1d9',
-
         cursor: '#58a6ff',
-
         selectionBackground: '#264f78'
-
       },
-
       scrollback: 5000
-
     });
- 
+
     const fitAddon = new FitAddon.FitAddon();
-
     term.loadAddon(fitAddon);
-
     term.open(document.getElementById('terminal'));
-
     fitAddon.fit();
- 
+
     let emulator = null;
-
     const statusEl = document.getElementById('status');
- 
+
     function setStatus(msg) {
-
       statusEl.textContent = msg;
-
     }
- 
+
     function boot() {
-
       if (emulator) {
-
-        emulator.stop();
-
+        try { emulator.stop(); } catch(e) {}
         emulator = null;
-
       }
- 
-      setStatus('Booting...');
- 
+
+      setStatus('Booting... please wait');
+
       emulator = new V86({
-
-        wasm_path: 'v86.wasm',
-
+        wasm_path: "v86.wasm",
         memory_size: 256 * 1024 * 1024,
-
         vga_memory_size: 8 * 1024 * 1024,
-
-        bios: { url: 'seabios.bin' },
-
-        vga_bios: { url: 'vgabios.bin' },
-
-        cdrom: { url: 'linux4.iso' },
-
+        bios: { url: "seabios.bin" },
+        vga_bios: { url: "vgabios.bin" },
+        cdrom: { url: "linux4.iso" },
         autostart: true,
-
         disable_keyboard: true,
-
-        disable_mouse: true,
-
-        serial_container_xtermjs: term
-
+        disable_mouse: true
       });
- 
-      emulator.add_listener('emulator-loaded', () => {
 
-        setStatus('Linux is running');
+      // Connect Linux serial output → xterm
+      emulator.add_listener("serial0-output-byte", function(byte) {
+        const char = String.fromCharCode(byte);
+        term.write(char);
+      });
 
+      // Connect xterm input → Linux serial
+      term.onData(function(data) {
+        if (emulator) {
+          emulator.serial0_send(data);
+        }
+      });
+
+      // When the emulator finishes loading the ISO
+      emulator.add_listener("emulator-loaded", function() {
+        setStatus("Linux is running - you can type now");
         term.focus();
-
       });
- 
-      window.addEventListener('resize', () => {
 
+      // Fallback: change status after some time even if event is missed
+      setTimeout(function() {
+        if (statusEl.textContent.includes("Booting")) {
+          setStatus("Linux should be ready - try typing");
+          term.focus();
+        }
+      }, 45000);
+
+      window.addEventListener("resize", function() {
         fitAddon.fit();
-
       });
-
     }
- 
-    document.getElementById('btn-boot').addEventListener('click', boot);
 
-    document.getElementById('btn-reset').addEventListener('click', () => {
-
+    document.getElementById("btn-boot").addEventListener("click", boot);
+    document.getElementById("btn-reset").addEventListener("click", function() {
       if (emulator) {
-
         emulator.restart();
-
-        setStatus('Restarting...');
-
+        setStatus("Restarting...");
       }
-
     });
-</script>
+  </script>
 </body>
 </html>
-
+EOF
