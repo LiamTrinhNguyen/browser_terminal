@@ -4,13 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Python Terminal (Pyodide)</title>
-
-  <!-- xterm.js -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
-
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       background: #0d1117;
       color: #c9d1d9;
@@ -20,7 +16,6 @@
       flex-direction: column;
       overflow: hidden;
     }
-
     .header {
       background: #161b22;
       border-bottom: 1px solid #30363d;
@@ -30,34 +25,13 @@
       justify-content: space-between;
       flex-shrink: 0;
     }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-    .dot.red    { background: #ff5f56; }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot.red { background: #ff5f56; }
     .dot.yellow { background: #ffbd2e; }
-    .dot.green  { background: #27c93f; }
-
-    .title {
-      font-size: 14px;
-      font-weight: 500;
-      color: #8b949e;
-    }
-
-    .controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
+    .dot.green { background: #27c93f; }
+    .title { font-size: 14px; font-weight: 500; color: #8b949e; }
+    .controls { display: flex; align-items: center; gap: 8px; }
     .controls button, .controls label {
       background: #21262d;
       color: #c9d1d9;
@@ -67,22 +41,14 @@
       font-size: 13px;
       cursor: pointer;
     }
-    .controls button:hover, .controls label:hover {
-      background: #30363d;
-    }
+    .controls button:hover, .controls label:hover { background: #30363d; }
     .controls button.primary {
       background: #238636;
       border-color: #238636;
       color: #fff;
     }
-    .controls button.primary:hover {
-      background: #2ea043;
-    }
-    .controls button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
+    .controls button.primary:hover { background: #2ea043; }
+    .controls button:disabled { opacity: 0.5; cursor: not-allowed; }
     #panel {
       flex: 1;
       display: flex;
@@ -90,7 +56,6 @@
       padding: 12px;
       min-height: 0;
     }
-
     #terminal-wrapper {
       flex: 1;
       background: #0d1117;
@@ -99,13 +64,7 @@
       overflow: hidden;
       position: relative;
     }
-
-    #terminal {
-      width: 100%;
-      height: 100%;
-      padding: 6px;
-    }
-
+    #terminal { width: 100%; height: 100%; padding: 6px; }
     #status {
       position: absolute;
       top: 10px;
@@ -118,17 +77,11 @@
       z-index: 10;
       border: 1px solid #30363d;
     }
-    #status.ready {
-      color: #3fb950;
-      border-color: #238636;
-    }
-    #status.loading {
-      color: #d29922;
-    }
+    #status.ready { color: #3fb950; border-color: #238636; }
+    #status.loading { color: #d29922; }
   </style>
 </head>
 <body>
-
   <div class="header">
     <div class="header-left">
       <div class="dot red"></div>
@@ -153,13 +106,11 @@
     </div>
   </div>
 
-  <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 
   <script>
-    // ========== Terminal ==========
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -170,7 +121,7 @@
         cursor: '#58a6ff',
         selectionBackground: '#264f78'
       },
-      scrollback: 5000,
+      scrollback: 8000,
       convertEol: true
     });
 
@@ -178,17 +129,14 @@
     term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal'));
     fitAddon.fit();
-
     window.addEventListener('resize', () => fitAddon.fit());
-
-    // Click to focus
     document.getElementById('terminal-wrapper').addEventListener('click', () => term.focus());
 
-    // ========== State ==========
     let pyodide = null;
     let ready = false;
-    let currentInput = '';
-    let prompt = '>>> ';
+    let currentLine = '';
+    let buffer = [];          // multi-line buffer
+    let inMultiline = false;
 
     const statusEl = document.getElementById('status');
     const btnStart = document.getElementById('btn-start');
@@ -198,104 +146,92 @@
       statusEl.className = type;
     }
 
-    function write(text) {
-      term.write(text);
+    function write(text)  { term.write(text); }
+    function writeln(text = '') { term.writeln(text); }
+
+    function showPrompt() {
+      write(inMultiline ? '... ' : '>>> ');
     }
 
-    function writeln(text = '') {
-      term.writeln(text);
-    }
-
-    // ========== Start Pyodide ==========
+    // ========== Start Python ==========
     async function startPython() {
       if (ready) return;
 
       btnStart.disabled = true;
       btnStart.textContent = 'Loading...';
-      setStatus('Loading Python (first time may take 10-20s)...', 'loading');
-      writeln('Loading Pyodide (CPython in WebAssembly)...');
-      writeln('Please wait...\r\n');
+      setStatus('Loading Python (10-25s first time)...', 'loading');
+      writeln('Loading Pyodide (real CPython in WebAssembly)...\r\n');
 
       try {
         pyodide = await loadPyodide({
           indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/'
         });
 
-        // Redirect Python print to the terminal
-        pyodide.setStdout({
-          batched: (text) => {
-            write(text);
-          }
-        });
-        pyodide.setStderr({
-          batched: (text) => {
-            write('\x1b[31m' + text + '\x1b[0m');
-          }
-        });
+        // Load micropip so we can install packages
+        await pyodide.loadPackage('micropip');
+        await pyodide.runPythonAsync('import micropip');
+
+        // Redirect stdout / stderr to terminal
+        pyodide.setStdout({ batched: (t) => write(t) });
+        pyodide.setStderr({ batched: (t) => write('\x1b[31m' + t + '\x1b[0m') });
 
         ready = true;
-        setStatus('Python is ready', 'ready');
+        setStatus('Python ready', 'ready');
         btnStart.textContent = 'Python Ready';
-        btnStart.disabled = true;
 
-        writeln('Python ' + pyodide.runPython('import sys; sys.version.split()[0]') + ' ready');
-        writeln('Type Python code and press Enter. Use Shift+Enter for multi-line.');
-        writeln('You can also load a .py file with the button above.\r\n');
-        write(prompt);
+        const ver = pyodide.runPython('import sys; sys.version.split()[0]');
+        writeln('Python ' + ver + ' ready (Pyodide)');
+        writeln('• Enter          → run code');
+        writeln('• Shift+Enter    → multi-line continue');
+        writeln('• %pip install x → install package');
+        writeln('• Ctrl+C         → cancel current input');
+        writeln('• Ctrl+L         → clear screen\r\n');
+        showPrompt();
         term.focus();
 
       } catch (err) {
-        writeln('\x1b[31mFailed to load Python: ' + err.message + '\x1b[0m');
-        setStatus('Failed to load', '');
+        writeln('\x1b[31mFailed: ' + err.message + '\x1b[0m');
+        setStatus('Failed', '');
         btnStart.disabled = false;
         btnStart.textContent = 'Start Python';
       }
     }
 
-    // ========== Run Python code ==========
-    async function runCode(code) {
+    // ========== Execute code ==========
+    async function execute(code) {
       if (!ready || !code.trim()) return;
 
-      try {
-        const result = await pyodide.runPythonAsync(code);
-
-        // If the code produced a value, show it
-        if (result !== undefined && result !== null) {
-          const repr = pyodide.runPython(`repr(${JSON.stringify(String(result))})`);
-          // Better: use Python's own repr
-          const pyRepr = await pyodide.runPythonAsync(`
-import sys
-_val = None
-try:
-    _val = ${code}
-except:
-    pass
-repr(_val) if _val is not None else ""
-          `).catch(() => '');
-
-          // Simpler approach - just show non-None results from expressions
+      // Special command: %pip install ...
+      if (code.trim().startsWith('%pip install ') || code.trim().startsWith('!pip install ')) {
+        const pkg = code.trim().replace(/^(%|!)pip install\s+/, '').trim();
+        if (!pkg) {
+          writeln('Usage: %pip install package_name');
+          return;
         }
-      } catch (err) {
-        writeln('\x1b[31m' + err.message + '\x1b[0m');
-      }
-    }
-
-    // Better execution that shows expression results
-    async function execute(code) {
-      if (!ready) return;
-
-      try {
-        // Try to eval as expression first (to show result)
-        let result;
+        writeln('Installing ' + pkg + ' ...');
         try {
-          result = pyodide.runPython(code);
+          await pyodide.runPythonAsync(`
+import micropip
+await micropip.install("${pkg}")
+print("Successfully installed ${pkg}")
+          `);
+        } catch (e) {
+          writeln('\x1b[31m' + (e.message || e) + '\x1b[0m');
+        }
+        return;
+      }
+
+      // Normal Python code
+      try {
+        // First try as expression (to show the result)
+        try {
+          const result = pyodide.runPython(code);
           if (result !== undefined && result !== null) {
-            // Convert to string representation
-            const str = pyodide.globals.get('repr')(result);
-            writeln(str);
+            const repr = pyodide.globals.get('repr');
+            writeln(repr(result));
           }
         } catch (e) {
-          // Not a simple expression → run as statements
+          // Not a pure expression → run as statements
           await pyodide.runPythonAsync(code);
         }
       } catch (err) {
@@ -309,26 +245,64 @@ repr(_val) if _val is not None else ""
 
       const code = data.charCodeAt(0);
 
-      // Enter
+      // Enter (run or continue)
       if (data === '\r') {
         writeln('');
-        const line = currentInput;
-        currentInput = '';
 
-        if (line.trim()) {
-          execute(line).then(() => {
-            write(prompt);
-          });
+        // Shift+Enter is detected by the browser as a different event,
+        // but xterm only gives us the character. We use a simple rule:
+        // if the line ends with ":" or is empty while in multiline → continue
+        // otherwise if user holds Shift we can't easily detect it here,
+        // so we provide an alternative: type a lone "\" at the end to continue.
+
+        const line = currentLine;
+        currentLine = '';
+
+        // Explicit continue marker: line ends with \
+        if (line.endsWith('\\')) {
+          buffer.push(line.slice(0, -1));
+          inMultiline = true;
+          showPrompt();
+          return;
+        }
+
+        buffer.push(line);
+
+        // Auto multi-line: if line ends with : or we are already in multi-line
+        // and the line is not empty, keep collecting
+        const last = buffer[buffer.length - 1];
+        const shouldContinue =
+          inMultiline && last.trim() !== '' ||
+          last.trim().endsWith(':') ||
+          last.trim().endsWith('\\');
+
+        if (shouldContinue && last.trim() !== '') {
+          inMultiline = true;
+          showPrompt();
+          return;
+        }
+
+        // Empty line while in multi-line → finish
+        if (inMultiline && last.trim() === '') {
+          buffer.pop(); // remove the empty line
+        }
+
+        const fullCode = buffer.join('\n');
+        buffer = [];
+        inMultiline = false;
+
+        if (fullCode.trim()) {
+          execute(fullCode).then(() => showPrompt());
         } else {
-          write(prompt);
+          showPrompt();
         }
         return;
       }
 
       // Backspace
       if (data === '\u007F' || data === '\b') {
-        if (currentInput.length > 0) {
-          currentInput = currentInput.slice(0, -1);
+        if (currentLine.length > 0) {
+          currentLine = currentLine.slice(0, -1);
           write('\b \b');
         }
         return;
@@ -337,50 +311,66 @@ repr(_val) if _val is not None else ""
       // Ctrl+C
       if (code === 3) {
         writeln('^C');
-        currentInput = '';
-        write(prompt);
+        currentLine = '';
+        buffer = [];
+        inMultiline = false;
+        showPrompt();
         return;
       }
 
-      // Ctrl+L (clear)
+      // Ctrl+L
       if (code === 12) {
         term.clear();
-        write(prompt);
+        showPrompt();
         return;
       }
 
-      // Printable characters
+      // Printable
       if (data >= ' ' || data === '\t') {
-        currentInput += data;
+        currentLine += data;
         write(data);
       }
     });
 
+    // Better multi-line with real Shift+Enter detection
+    // We listen at the DOM level for keydown
+    term.textarea.addEventListener('keydown', (e) => {
+      if (!ready) return;
+
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        // Force continue
+        writeln('');
+        buffer.push(currentLine);
+        currentLine = '';
+        inMultiline = true;
+        showPrompt();
+      }
+    });
+
     // ========== Buttons ==========
-    document.getElementById('btn-start').addEventListener('click', startPython);
+    btnStart.addEventListener('click', startPython);
 
     document.getElementById('btn-clear').addEventListener('click', () => {
       term.clear();
-      currentInput = '';
-      if (ready) write(prompt);
+      currentLine = '';
+      buffer = [];
+      inMultiline = false;
+      if (ready) showPrompt();
     });
 
-    // Load .py file
     document.getElementById('file-input').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file || !ready) return;
 
       const text = await file.text();
-      writeln('\r\n# Running file: ' + file.name);
+      writeln('\r\n# Running: ' + file.name);
       writeln('----------------------------------------');
       await execute(text);
       writeln('----------------------------------------');
-      write(prompt);
-      e.target.value = ''; // reset so same file can be loaded again
+      showPrompt();
+      e.target.value = '';
     });
-
-    // Optional: auto-start
-    // window.addEventListener('load', () => setTimeout(startPython, 300));
   </script>
 </body>
 </html>
