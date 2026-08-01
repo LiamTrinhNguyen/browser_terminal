@@ -25,24 +25,12 @@
       justify-content: space-between;
       flex-shrink: 0;
     }
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
     .dot.red { background: #ff5f56; }
     .dot.yellow { background: #ffbd2e; }
     .dot.green { background: #27c93f; }
-    .title {
-      font-size: 14px;
-      font-weight: 500;
-      color: #8b949e;
-    }
+    .title { font-size: 14px; font-weight: 500; color: #8b949e; }
     .controls button {
       background: #21262d;
       color: #c9d1d9;
@@ -92,13 +80,8 @@
       z-index: 10;
       border: 1px solid #30363d;
     }
-    #status.running {
-      color: #3fb950;
-      border-color: #238636;
-    }
-    #status.booting {
-      color: #d29922;
-    }
+    #status.running { color: #3fb950; border-color: #238636; }
+    #status.booting { color: #d29922; }
   </style>
 </head>
 <body>
@@ -107,7 +90,7 @@
       <div class="dot red"></div>
       <div class="dot yellow"></div>
       <div class="dot green"></div>
-      <span class="title">Linux Terminal Panel · Alpine</span>
+      <span class="title">Linux Terminal Panel</span>
     </div>
     <div class="controls">
       <button id="btn-boot" class="primary">Boot Linux</button>
@@ -146,6 +129,11 @@
     term.open(document.getElementById('terminal'));
     fitAddon.fit();
 
+    // Click anywhere in the terminal to focus it
+    document.getElementById('terminal-wrapper').addEventListener('click', () => {
+      term.focus();
+    });
+
     let emulator = null;
     const statusEl = document.getElementById('status');
     const btnBoot = document.getElementById('btn-boot');
@@ -162,56 +150,66 @@
       }
 
       term.reset();
-      setStatus('Booting Alpine Linux... please wait', 'booting');
+      term.writeln('Starting emulator...');
+      setStatus('Booting... please wait (30-90s)', 'booting');
       btnBoot.disabled = true;
       btnBoot.textContent = 'Booting...';
 
+      // Prefer linux4.iso first (more reliable serial shell)
+      // Change to 'alpine.iso' later once basic interaction works
+      const iso = 'linux4.iso';
+
       emulator = new V86({
         wasm_path: 'v86.wasm',
-        memory_size: 384 * 1024 * 1024,
-        vga_memory_size: 8 * 1024 * 1024,
+        memory_size: 256 * 1024 * 1024,
+        vga_memory_size: 2 * 1024 * 1024,
         bios: { url: 'seabios.bin' },
         vga_bios: { url: 'vgabios.bin' },
-        cdrom: { url: 'alpine.iso' },
+        cdrom: { url: iso },
         autostart: true,
         disable_keyboard: true,
         disable_mouse: true
       });
 
-      emulator.add_listener('serial0-output-byte', function(byte) {
-        term.write(String.fromCharCode(byte));
-      });
+      // Listen for BOTH possible serial events (different v86 versions use different names)
+      function onSerialData(data) {
+        if (typeof data === 'number') {
+          term.write(String.fromCharCode(data));
+        } else {
+          term.write(data);
+        }
+      }
 
-      term.onData(function(data) {
+      emulator.add_listener('serial0-output-byte', onSerialData);
+      emulator.add_listener('serial0-output-char', onSerialData);
+
+      // Send keystrokes to the emulator
+      term.onData(function (data) {
         if (emulator) {
           emulator.serial0_send(data);
         }
       });
 
-      emulator.add_listener('emulator-loaded', function() {
-        setStatus('Linux is running — you can type now', 'running');
+      emulator.add_listener('emulator-loaded', function () {
+        setStatus('Emulator loaded — waiting for shell...', 'booting');
+        term.writeln('\r\n[emulator loaded]');
+      });
+
+      // After some time, assume it is ready
+      setTimeout(function () {
+        setStatus('Try typing now (click terminal first)', 'running');
         btnBoot.disabled = false;
         btnBoot.textContent = 'Boot Linux';
         term.focus();
-      });
+        term.writeln('\r\n[ready — click here and type]');
+      }, 45000);
 
-      setTimeout(function() {
-        if (statusEl.textContent.indexOf('Booting') !== -1) {
-          setStatus('Should be ready — try typing', 'running');
-          btnBoot.disabled = false;
-          btnBoot.textContent = 'Boot Linux';
-          term.focus();
-        }
-      }, 60000);
-
-      window.addEventListener('resize', function() {
-        fitAddon.fit();
-      });
+      window.addEventListener('resize', () => fitAddon.fit());
     }
 
     btnBoot.addEventListener('click', boot);
 
-    document.getElementById('btn-reset').addEventListener('click', function() {
+    document.getElementById('btn-reset').addEventListener('click', function () {
       if (emulator) {
         emulator.restart();
         setStatus('Restarting...', 'booting');
